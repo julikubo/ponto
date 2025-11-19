@@ -187,12 +187,13 @@
                                             <th>Saída</th>
                                             <th>Total</th>
                                             <th>Status</th>
+                                            <th>Observação</th>
                                             <th>Ações</th>
                                         </tr>
                                     </thead>
                                     <tbody id="recentRecords">
                                         <tr>
-                                            <td colspan="6" class="text-center text-muted">
+                                            <td colspan="7" class="text-center text-muted">
                                                 <i class="bi bi-hourglass-split"></i> Carregando registros...
                                             </td>
                                         </tr>
@@ -402,6 +403,10 @@
                                     <input type="time" class="form-control" id="editOut" required>
                                 </div>
                             </div>
+                            <div class="mb-3">
+                                <label class="form-label">Observação</label>
+                                <textarea class="form-control" id="editNotes" rows="2"></textarea>
+                            </div>
                         </form>
                     </div>
                     <div class="modal-footer">
@@ -437,7 +442,7 @@
             }
 
         // Inicializar interface
-        await initializeInterface();
+            await initializeInterface();
             await verifySupabaseConnection();
             
             // Carregar dados iniciais
@@ -576,7 +581,7 @@
         async function initSettings() {
             try {
                 const timecardManager = new TimecardManager();
-                await timecardManager.loadWorkSettings();
+                
                 const ws = timecardManager.workSettings || {};
                 document.getElementById('companyName').value = ws.company_name || '';
                 document.getElementById('startDate').value = ws.start_date || '';
@@ -775,7 +780,7 @@
                         <td>¥ ${valToStr(calc.normalValue)}</td>
                         <td>¥ ${valToStr(calc.extraValue)}</td>
                         <td>¥ ${valToStr(totalDia)}</td>
-                        <td>${isSunday ? '<span class="badge bg-info">Domingo</span>' : ''}</td>`;
+                        <td>${isSunday ? '<span class="badge bg-info">Domingo</span> ' : ''}${r.notes ?? r.observacao ?? r.observacoes ?? ''}</td>`;
                     tbody.appendChild(tr);
                 });
                 document.getElementById('repTotNormal').textContent = timecardManager.formatHours(totNorm);
@@ -792,6 +797,8 @@
             return (v || 0).toFixed(2).replace('.', ',');
         }
 
+        
+
         async function openEditRecord(id) {
             try {
                 const timecardManager = new TimecardManager();
@@ -800,13 +807,15 @@
                 document.getElementById('editDate').value = rec.date;
                 document.getElementById('editIn').value = (rec.clock_in || '00:00').substring(0,5);
                 document.getElementById('editOut').value = (rec.clock_out || '00:00').substring(0,5);
+                document.getElementById('editNotes').value = rec.notes || '';
                 const modal = new bootstrap.Modal(document.getElementById('editRecordModal'));
                 modal.show();
                 document.getElementById('saveEditRecordBtn').onclick = async () => {
                     const updates = {
                         date: document.getElementById('editDate').value,
                         clock_in: document.getElementById('editIn').value,
-                        clock_out: document.getElementById('editOut').value
+                        clock_out: document.getElementById('editOut').value,
+                        notes: document.getElementById('editNotes').value
                     };
                     const res = await timecardManager.updateRecord(id, updates);
                     if (res.success) {
@@ -894,10 +903,11 @@
         // Carregar registros recentes
         async function loadRecentRecords() {
             const tbody = document.getElementById('recentRecords');
-            tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted"><i class="bi bi-hourglass-split"></i> Carregando registros...</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted"><i class="bi bi-hourglass-split"></i> Carregando registros...</td></tr>';
             
             try {
                 const timecardManager = new TimecardManager();
+                await timecardManager.loadWorkSettings();
                 
                 // Buscar registros dos últimos 7 dias
                 const endDate = new Date().toISOString().split('T')[0];
@@ -908,7 +918,7 @@
                 const records = await timecardManager.getRecords(startDateStr, endDate);
                 
                 if (records.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted">Nenhum registro encontrado</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted">Nenhum registro encontrado</td></tr>';
                     return;
                 }
                 
@@ -937,7 +947,8 @@
                     } else if (record.status === 'completed') {
                         statusClass = 'badge bg-primary';
                         statusText = 'Concluído';
-                    }
+                    } 
+                    const isSunday = new Date(record.date).getDay() === 0;
                     
                     row.innerHTML = `
                         <td>${formattedDate}</td>
@@ -945,9 +956,13 @@
                         <td>${record.clock_out || '--:--'}</td>
                         <td>${formattedHours}</td>
                         <td><span class="${statusClass}">${statusText}</span></td>
+                        <td>${isSunday ? '<span class="badge bg-info me-1">Domingo</span>' : ''}${record.notes ?? record.observacao ?? record.observacoes ?? ''}</td>
                         <td>
                             <button class="btn btn-sm btn-outline-primary edit-record" data-id="${record.id}">
                                 <i class="bi bi-pencil"></i>
+                            </button>
+                            <button class="btn btn-sm btn-outline-danger delete-record" data-id="${record.id}">
+                                <i class="bi bi-trash"></i>
                             </button>
                         </td>
                     `;
@@ -962,10 +977,25 @@
                         openEditRecord(recordId);
                     });
                 });
+                document.querySelectorAll('.delete-record').forEach(button => {
+                    button.addEventListener('click', async (e) => {
+                        const recordId = e.currentTarget.getAttribute('data-id');
+                        if (confirm('Deseja excluir este registro?')) {
+                            const timecardManager = new TimecardManager();
+                            const res = await timecardManager.deleteRecord(recordId);
+                            if (res.success) {
+                                showAlert('Registro excluído', 'success');
+                                loadRecentRecords();
+                            } else {
+                                showAlert(res.message || 'Erro ao excluir', 'danger');
+                            }
+                        }
+                    });
+                });
                 
             } catch (error) {
                 console.error('Erro ao carregar registros:', error);
-                tbody.innerHTML = '<tr><td colspan="6" class="text-center text-danger">Erro ao carregar registros</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="7" class="text-center text-danger">Erro ao carregar registros</td></tr>';
             }
         }
 

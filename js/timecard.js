@@ -7,6 +7,7 @@ class TimecardManager {
         this.workSettings = null;
         this.currentUser = null;
         this.currentRecord = null;
+        
     }
 
     getClient() {
@@ -193,6 +194,8 @@ class TimecardManager {
             throw error;
         }
     }
+
+    
 
     /**
      * Registra entrada
@@ -435,14 +438,48 @@ class TimecardManager {
                 payload.total_hours = calc.totalHours;
             }
             payload.updated_at = new Date().toISOString();
-            const { data, error } = await this.getClient()
+            
+            let { data, error } = await this.getClient()
                 .from('time_records')
                 .update(payload)
                 .eq('id', id)
                 .select()
                 .single();
-            if (error) throw error;
+            if (error) {
+                if ('notes' in payload) {
+                    const { notes, ...withoutNotes } = payload;
+                    const retry = await this.getClient()
+                        .from('time_records')
+                        .update(withoutNotes)
+                        .eq('id', id)
+                        .select()
+                        .single();
+                    if (retry.error) throw retry.error;
+                    data = retry.data;
+                } else {
+                    throw error;
+                }
+            }
             return { success: true, record: data };
+        } catch (e) {
+            return { success: false, message: e.message || e };
+        }
+    }
+
+    async deleteRecord(id) {
+        try {
+            if (!this.currentUser) {
+                const { data: { user } } = await this.getClient().auth.getUser();
+                if (!user) throw new Error('Usuário não autenticado');
+                this.currentUser = user;
+            }
+            const { error } = await this.getClient()
+                .from('time_records')
+                .delete()
+                .eq('id', id)
+                .eq('user_id', this.currentUser.id);
+            if (error) throw error;
+            return { success: true };
         } catch (e) {
             return { success: false, message: e.message || e };
         }
