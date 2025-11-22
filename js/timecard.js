@@ -7,7 +7,7 @@ class TimecardManager {
         this.workSettings = null;
         this.currentUser = null;
         this.currentRecord = null;
-        
+
     }
 
     getClient() {
@@ -27,7 +27,7 @@ class TimecardManager {
         try {
             const key = this.getCacheKey();
             localStorage.setItem(key, JSON.stringify(settings));
-        } catch (e) {}
+        } catch (e) { }
     }
 
     loadSettingsCache() {
@@ -87,15 +87,17 @@ class TimecardManager {
             }
             const payload = {
                 user_id: this.currentUser.id,
-                work_hours_per_day: settings.work_hours_per_day,
-                lunch_break: settings.lunch_break,
+                daily_hours: settings.daily_hours,
+                lunch_minutes: settings.lunch_minutes,
                 company_name: settings.company_name,
                 start_date: settings.start_date,
                 end_date: settings.end_date,
-                hour_rate: settings.hour_rate,
-                extra_percent: settings.extra_percent,
+                hourly_rate: settings.hourly_rate,
+                overtime_rate: settings.overtime_rate,
                 break_count: settings.break_count,
                 break_minutes: settings.break_minutes,
+                work_start: settings.work_start,
+                work_end: settings.work_end,
                 updated_at: new Date().toISOString()
             };
             let res = await this.getClient()
@@ -131,9 +133,9 @@ class TimecardManager {
         try {
             const defaultSettings = {
                 user_id: userId,
-                work_hours_per_day: 8,
+                daily_hours: 8,
                 work_days: [1, 2, 3, 4, 5],
-                lunch_break: 60,
+                lunch_minutes: 60,
                 created_at: new Date().toISOString()
             };
             let resp = await this.getClient()
@@ -195,7 +197,7 @@ class TimecardManager {
         }
     }
 
-    
+
 
     /**
      * Registra entrada
@@ -204,7 +206,7 @@ class TimecardManager {
         try {
             // Verificar se já existe um registro em aberto
             await this.checkCurrentRecord();
-            
+
             if (this.currentRecord && this.currentRecord.clock_in && !this.currentRecord.clock_out) {
                 return {
                     success: false,
@@ -249,7 +251,7 @@ class TimecardManager {
         try {
             // Verificar se existe um registro em aberto
             await this.checkCurrentRecord();
-            
+
             if (!this.currentRecord || !this.currentRecord.clock_in) {
                 return {
                     success: false,
@@ -272,18 +274,18 @@ class TimecardManager {
             const clockInParts = this.normalizeTime(this.currentRecord.clock_in).split(':');
             const clockInHours = parseInt(clockInParts[0]);
             const clockInMinutes = parseInt(clockInParts[1]);
-            
+
             const clockOutHours = now.getHours();
             const clockOutMinutes = now.getMinutes();
-            
+
             // Calcular diferença em minutos
             let totalMinutes = (clockOutHours * 60 + clockOutMinutes) - (clockInHours * 60 + clockInMinutes);
-            
+
             // Se for negativo (virada do dia), ajustar
             if (totalMinutes < 0) {
                 totalMinutes += 24 * 60;
             }
-            
+
             // Converter para horas decimais
             const totalHours = totalMinutes / 60;
 
@@ -383,7 +385,7 @@ class TimecardManager {
         const outMinutes = parseInt(hOut[0]) * 60 + parseInt(hOut[1]);
         let totalMinutes = outMinutes - inMinutes;
         if (totalMinutes < 0) totalMinutes += 24 * 60;
-        const lunch = parseInt(this.workSettings?.lunch_break ?? 60);
+        const lunch = parseInt(this.workSettings?.lunch_minutes ?? 60);
         const breakCount = parseInt(this.workSettings?.break_count ?? 0);
         const breakMinutes = parseInt(this.workSettings?.break_minutes ?? 15);
         const discounts = lunch + breakCount * breakMinutes;
@@ -395,12 +397,12 @@ class TimecardManager {
             normalHours = 0;
             extraHours = totalHours;
         } else {
-            const base = parseFloat(this.workSettings?.work_hours_per_day ?? 8);
+            const base = parseFloat(this.workSettings?.daily_hours ?? 8);
             normalHours = Math.min(base, totalHours);
             extraHours = Math.max(0, totalHours - base);
         }
-        const hourRate = parseFloat(this.workSettings?.hour_rate ?? 0);
-        const extraPercent = parseFloat(this.workSettings?.extra_percent ?? 25);
+        const hourRate = parseFloat(this.workSettings?.hourly_rate ?? 0);
+        const extraPercent = parseFloat(this.workSettings?.overtime_rate ?? 25);
         const normalValue = normalHours * hourRate;
         const extraValue = extraHours * hourRate * (1 + (extraPercent / 100));
         return { totalHours, normalHours, extraHours, normalValue, extraValue };
@@ -438,7 +440,7 @@ class TimecardManager {
                 payload.total_hours = calc.totalHours;
             }
             payload.updated_at = new Date().toISOString();
-            
+
             let { data, error } = await this.getClient()
                 .from('time_records')
                 .update(payload)
@@ -488,15 +490,15 @@ class TimecardManager {
     normalizeTime(t) {
         if (!t) return '00:00:00';
         const parts = t.split(':');
-        if (parts.length === 2) return `${parts[0].padStart(2,'0')}:${parts[1].padStart(2,'0')}:00`;
-        if (parts.length >= 3) return `${parts[0].padStart(2,'0')}:${parts[1].padStart(2,'0')}:${parts[2].padStart(2,'0')}`;
+        if (parts.length === 2) return `${parts[0].padStart(2, '0')}:${parts[1].padStart(2, '0')}:00`;
+        if (parts.length >= 3) return `${parts[0].padStart(2, '0')}:${parts[1].padStart(2, '0')}:${parts[2].padStart(2, '0')}`;
         return '00:00:00';
     }
 
     formatTime(d) {
-        const hh = d.getHours().toString().padStart(2,'0');
-        const mm = d.getMinutes().toString().padStart(2,'0');
-        const ss = d.getSeconds().toString().padStart(2,'0');
+        const hh = d.getHours().toString().padStart(2, '0');
+        const mm = d.getMinutes().toString().padStart(2, '0');
+        const ss = d.getSeconds().toString().padStart(2, '0');
         return `${hh}:${mm}:${ss}`;
     }
 
@@ -542,23 +544,23 @@ class TimecardManager {
     async getStatistics(startDate, endDate) {
         try {
             const records = await this.getRecords(startDate, endDate);
-            
+
             let totalHours = 0;
             let overtimeHours = 0;
-            
+
             // Calcular horas totais
             records.forEach(record => {
                 if (record.total_hours) {
                     totalHours += record.total_hours;
                 }
             });
-            
+
             // Calcular horas extras (se aplicável)
             if (this.workSettings && records.length > 0) {
                 const expectedHours = records.length * this.workSettings.work_hours_per_day;
                 overtimeHours = Math.max(0, totalHours - expectedHours);
             }
-            
+
             return {
                 totalHours,
                 overtimeHours,
@@ -579,11 +581,11 @@ class TimecardManager {
      */
     formatHours(hours) {
         if (!hours && hours !== 0) return '0:00';
-        
+
         const totalMinutes = Math.round(hours * 60);
         const h = Math.floor(totalMinutes / 60);
         const m = totalMinutes % 60;
-        
+
         return `${h}:${m.toString().padStart(2, '0')}`;
     }
 }
