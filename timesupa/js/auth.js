@@ -195,6 +195,29 @@ class AuthManager {
         }
     }
 
+    async updateEmail(email) {
+        try {
+            const { data, error } = await supabase.auth.updateUser({ email });
+            if (error) throw error;
+            if (data?.user) {
+                this.currentUser = data.user;
+            }
+            return { success: true };
+        } catch (error) {
+            return { success: false, error: this.getErrorMessage(error) };
+        }
+    }
+
+    async updatePassword(password) {
+        try {
+            const { data, error } = await supabase.auth.updateUser({ password });
+            if (error) throw error;
+            return { success: true };
+        } catch (error) {
+            return { success: false, error: this.getErrorMessage(error) };
+        }
+    }
+
     // Traduzir mensagens de erro
     getErrorMessage(error) {
         const errorMessages = {

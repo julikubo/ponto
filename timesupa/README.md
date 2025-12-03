@@ -232,6 +232,13 @@ timesupa/
 1. Confirme o email após registro
 2. Verifique se RLS está configurado
 3. Teste com outro navegador
+4. Se estiver usando o Login Facial (facelogin), configure as credenciais de auto-login:
+   - Preferência: defina variáveis de ambiente no servidor:
+     - `TIMESUPA_AUTO_EMAIL` e `TIMESUPA_AUTO_PASSWORD`
+   - Alternativa: edite `proj/timesupa/facelogin/auto_login.php` e preencha:
+     - `email`: email do usuário no Supabase (id 1)
+     - `password`: senha do usuário
+   - O `facelogin/auth_facial.php` usa essas credenciais para gerar sessão Supabase e redirecionar para `login.html`, que aplica os tokens automaticamente.
 
 ### Erro nas Tabelas
 
